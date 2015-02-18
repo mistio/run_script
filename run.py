@@ -181,7 +181,7 @@ def run_ansible_playbook(path, params=''):
         bootstrap_ansible()
     cmd = "%s %s" % (player, path)
     if params:
-        cmd += " -e %s" % params
+        cmd += ' -e "%s"' % params.replace('"', r'\"')
     return shellcmd(cmd, break_on_error=False)
 
 
