@@ -33,7 +33,7 @@ log = logging.getLogger(__name__)
 
 def shellcmd(cmd, break_on_error=True):
     """Run a command using the shell"""
-    log.debug("Running command `%s`.", cmd)
+    log.debug("Running command '%s'.", cmd)
     return_code = subprocess.call(cmd, shell=True)
     if return_code:
         err = "Command '%s' exited with return code %d." % (cmd, return_code)
