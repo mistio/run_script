@@ -247,8 +247,9 @@ def main():
     log.addHandler(handler)
     log.setLevel(loglvl)
 
-    separator = '----sep-%x-sep----' % random.randrange(2 ** 128)
-    print separator
+    randid = '%x' % random.randrange(2 ** 128)
+    mksep = lambda part: '-----part-%s-%s-----' % (part, randid)
+    print mksep('bootstrap')
 
     try:
         if os.path.isfile(args.script):
@@ -274,24 +275,31 @@ def main():
             run = run_ansible_playbook
         else:
             run = run_executable_file
-        print separator
+        print mksep('end')
+        print mksep('script')
         exit_code = run(path, args.params)
-        print separator
-        output = ''
-        if os.path.isfile('output'):
-            try:
-                log.info("Reading 'output' file.")
-                with open('output') as fobj:
-                    output = fobj.read()
-            except Exception as exc:
-                log.error("Error reading 'output' file: %r", exc)
-        print separator
-        print output
-        print separator
-        log.info("Execution completed successfully.")
+        out_paths = ('output', os.path.join(os.path.dirname(path), 'output'))
+        for out_path in out_paths:
+            if os.path.isfile(out_path):
+                print mksep('end')
+                print mksep('outfile')
+                try:
+                    with open(out_path) as fobj:
+                        print fobj.read()
+                except Exception as exc:
+                    log.error("Error reading '%s' file: %r", out_path, exc)
+                break
+        print mksep('end')
+        print mksep('summary')
+        log.info("Wrapper script execution completed successfully. "
+                 "User script exited with rc %s." % exit_code)
+        print mksep('end')
         return exit_code
     except Exception as exc:
+        print mksep('end')
+        print mksep('summary')
         log.critical(exc)
+        print mksep('end')
         return -1
 
 
