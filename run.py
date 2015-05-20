@@ -23,7 +23,7 @@ import subprocess
 
 
 # these settings affect ansible playbooks
-PYPI_URL = "https://pypi.python.org/packages/source/"
+PYPI_URL = "https://pypi.python.org/packages/source"
 VENV_VERSION = "1.11.6"
 ANSIBLE_VERSION = "1.7.2"
 
