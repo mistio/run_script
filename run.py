@@ -98,7 +98,10 @@ def find_path(dirname='.', filename=''):
             path = os.path.join(dirname, ldir[0])
             if os.path.isdir(path):
                 dirname = path
+                if not filename:
+                    return path
                 continue
+
             break
         if filename:
             path = os.path.join(dirname, filename)
@@ -194,6 +197,21 @@ def run_executable_file(path, params=''):
     return shellcmd(cmd, break_on_error=False)
 
 
+def bootstrap_template(blueprint, inputs):
+    path = find_path('scripts')
+    os.chdir(path)
+    inpfile = open("inputs.json", "wb")
+    inpfile.write(inputs)
+    inpfile.close()
+    cmd = "cfy local init -p {0} -i inputs.json".format(blueprint)
+    return shellcmd(cmd, break_on_error=False)
+
+
+def run_template(workflow):
+    cmd = "cfy local execute -w {0}".format(workflow)
+    return shellcmd(cmd, break_on_error=False)
+
+
 def parse_args():
     """Parse command line arguments"""
     try:
@@ -212,6 +230,10 @@ def parse_args():
                             help="String of params to pass to script.")
         parser.add_argument('-a', '--ansible', action='store_true',
                             help="Treat script as an ansible playbook.")
+        parser.add_argument('-t', '--template', action='store_true',
+                            help="Treat script as an orchestation template.")
+        parser.add_argument('-w', '--workflow', type=str, default='install',
+                            help="Run workflow on orchestration template.")
         parser.add_argument('-v', '--verbose', action='store_true',
                             help="Show debug logs.")
         args = parser.parse_args()
@@ -227,6 +249,10 @@ def parse_args():
                           help="String of params to pass to script.")
         parser.add_option('-a', '--ansible', action='store_true',
                           help="Treat script as an ansible playbook.")
+        parser.add_option('-t', '--template', action='store_true',
+                          help="Treat script as an orchestation template.")
+        parser.add_option('-w', '--workflow', type=str,
+                          help="Run workflow on orchestration template.")
         parser.add_option('-v', '--verbose', action='store_true',
                           help="Show debug logs.")
         args, list_args = parser.parse_args()
@@ -273,11 +299,21 @@ def main():
         if args.ansible:
             bootstrap_ansible()
             run = run_ansible_playbook
+        elif args.template:
+            inputs = ""
+            if args.params:
+                inputs = args.params
+            bootstrap_template(path, inputs)
+            run = run_template
         else:
             run = run_executable_file
         print mksep('end')
         print mksep('script')
-        exit_code = run(path, args.params)
+        if args.template:
+            exit_code = run(args.workflow)
+            os.chdir(tmpdir)
+        else:
+            exit_code = run(path, args.params)
         out_paths = ('output', os.path.join(os.path.dirname(path), 'output'))
         for out_path in out_paths:
             if os.path.isfile(out_path):
