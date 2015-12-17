@@ -198,17 +198,22 @@ def run_executable_file(path, params=''):
 
 
 def bootstrap_template(blueprint, inputs):
+
     path = find_path('scripts')
     os.chdir(path)
-    inpfile = open("inputs.json", "wb")
-    inpfile.write(inputs)
-    inpfile.close()
-    cmd = "cfy local init -p {0} -i inputs.json".format(blueprint)
+    f = open("inputs.yaml", "wb")
+    f.write(inputs)
+    f.close()
+
+    shellcmd("virtualenv env", break_on_error=False)
+    shellcmd("env/bin/pip install cloudify", break_on_error=False)
+    shellcmd("env/bin/pip install -r dev-requirements.txt")
+    cmd = 'env/bin/cfy local init -p {0} -i inputs.yaml'.format(blueprint)
     return shellcmd(cmd, break_on_error=False)
 
 
 def run_template(workflow):
-    cmd = "cfy local execute -w {0}".format(workflow)
+    cmd = "env/bin/cfy local execute -w {0}".format(workflow)
     return shellcmd(cmd, break_on_error=False)
 
 
