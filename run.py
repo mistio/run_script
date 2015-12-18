@@ -80,6 +80,23 @@ def unpack(path, dirname='.'):
     else:
         raise Exception("File '%s' is not a valid tar or zip archive." % path)
 
+def find_folder(dirname='.'):
+    """Find absolute path of script"""
+    dirname = os.path.abspath(dirname)
+    if not os.path.isdir(dirname):
+        log.warning("Directory '%s' doesn't exist, will search in '%s'.",
+                    dirname, os.getcwd())
+        dirname = os.getcwd()
+    ldir = os.listdir(dirname)
+    if not ldir:
+        raise Exception("Directory '%s' is empty." % dirname)
+    if len(ldir) == 1:
+        path = os.path.join(dirname, ldir[0])
+        if os.path.isdir(path):
+            dirname = path
+            return path
+    else:
+        raise Exception("No folder found")
 
 def find_path(dirname='.', filename=''):
     """Find absolute path of script"""
@@ -98,10 +115,7 @@ def find_path(dirname='.', filename=''):
             path = os.path.join(dirname, ldir[0])
             if os.path.isdir(path):
                 dirname = path
-                if not filename:
-                    return path
                 continue
-
             break
         if filename:
             path = os.path.join(dirname, filename)
@@ -199,7 +213,7 @@ def run_executable_file(path, params=''):
 
 def bootstrap_template(blueprint, inputs):
 
-    path = find_path('scripts')
+    path = find_folder('scripts')
     os.chdir(path)
     f = open("inputs.yaml", "wb")
     f.write(inputs)
