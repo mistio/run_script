@@ -206,6 +206,30 @@ def run_executable_file(path, params=''):
     """Run a script"""
     os.chmod(path, 0700)
     cmd = path
+    if "--mist-export-params" in params:
+        paramsarray = params.split()
+        export = False
+        exportcmd = ""
+        paramsarrayremove = []
+        for p in paramsarray:
+            print(p)
+            if p == "--mist-export-params" or export:
+                if export:
+                    if p.startswith("-") or p.startswith("--"):
+                        export = False
+                        break
+                    elif p.find("=") != -1:
+                        print(exportcmd)
+                        exportcmd += "export {0};".format(p)
+                        paramsarrayremove.append(p)
+                else:
+                    paramsarrayremove.append(p)
+                    export = True
+        if exportcmd:
+            cmd = exportcmd + cmd
+        for p in paramsarrayremove:
+            paramsarray.remove(p)
+            params = " ".join(paramsarray)
     if params:
         cmd += " %s" % params
     return shellcmd(cmd, break_on_error=False)
