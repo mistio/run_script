@@ -10,6 +10,7 @@ Only system wide requirement is a python2 interpreter >= 2.4.
 """
 
 import os
+import json
 import sys
 import glob
 import copy
@@ -31,10 +32,19 @@ ANSIBLE_VERSION = "1.7.2"
 log = logging.getLogger(__name__)
 
 
-def shellcmd(cmd, break_on_error=True):
+def shellcmd(cmd, env={}, su=False, break_on_error=True):
     """Run a command using the shell"""
-    log.debug("Running command '%s'.", cmd)
-    return_code = subprocess.call(cmd, shell=True)
+    environ = os.environ.copy()
+    environ.update(env)
+    if su:
+        log.debug("Running command in su mode.")
+        p = subprocess.Popen(['sudo','-E' ,'su'], env=environ, stdin=subprocess.PIPE,
+                             stderr=subprocess.PIPE, universal_newlines=True)
+        print(p.communicate(cmd))
+        return_code = p.returncode
+    else:
+        log.debug("Running command '%s'.", cmd)
+        return_code = subprocess.call(cmd, env=environ, shell=True)
     if return_code:
         err = "Command '%s' exited with return code %d." % (cmd, return_code)
         if break_on_error:
@@ -202,37 +212,13 @@ def run_ansible_playbook(path, params=''):
     return shellcmd(cmd, break_on_error=False)
 
 
-def run_executable_file(path, params=''):
+def run_executable_file(path, params='', env={}, su=False):
     """Run a script"""
     os.chmod(path, 0700)
     cmd = path
-    if "--mist-export-params" in params:
-        paramsarray = params.split()
-        export = False
-        exportcmd = ""
-        paramsarrayremove = []
-        for p in paramsarray:
-            print(p)
-            if p == "--mist-export-params" or export:
-                if export:
-                    if p.startswith("-") or p.startswith("--"):
-                        export = False
-                        break
-                    elif p.find("=") != -1:
-                        print(exportcmd)
-                        exportcmd += "export {0};".format(p)
-                        paramsarrayremove.append(p)
-                else:
-                    paramsarrayremove.append(p)
-                    export = True
-        if exportcmd:
-            cmd = exportcmd + cmd
-        for p in paramsarrayremove:
-            paramsarray.remove(p)
-            params = " ".join(paramsarray)
     if params:
         cmd += " %s" % params
-    return shellcmd(cmd, break_on_error=False)
+    return shellcmd(cmd, env=env, su=su, break_on_error=False)
 
 
 def bootstrap_template(blueprint, inputs):
@@ -271,6 +257,10 @@ def parse_args():
                  "relative path of script file inside archive.")
         parser.add_argument('-p', '--params', type=str,
                             help="String of params to pass to script.")
+        parser.add_argument('-e', '--env', type=str,
+                            help="Env variables to pass to script.")
+        parser.add_argument('-s', '--su', action='store_true',
+                            help="Run script in sudo mode.")
         parser.add_argument('-a', '--ansible', action='store_true',
                             help="Treat script as an ansible playbook.")
         parser.add_argument('-t', '--template', action='store_true',
@@ -288,6 +278,12 @@ def parse_args():
             '-f', '--file', type=str,
             help="If script is a tar or zip archive, optionally specify "
                  "relative path of script file inside archive.")
+        parser.add_option('-p', '--params', type=str,
+                          help="String of params to pass to script.")
+        parser.add_option('-e', '--env', type=str,
+                          help="Env variables to pass to script.")
+        parser.add_option('-s', '--su', action='store_true',
+                          help="Run script in sudo mode.")
         parser.add_option('-p', '--params', type=str,
                           help="String of params to pass to script.")
         parser.add_option('-a', '--ansible', action='store_true',
@@ -318,6 +314,7 @@ def main():
 
     randid = '%x' % random.randrange(2 ** 128)
     mksep = lambda part: '-----part-%s-%s-----' % (part, randid)
+    kwargs = {}
     print mksep('bootstrap')
 
     try:
@@ -349,6 +346,10 @@ def main():
             bootstrap_template(path, inputs)
             run = run_template
         else:
+            if args.su:
+                kwargs["su"] = True
+            if args.env:
+                kwargs["env"] = json.loads(args.env)
             run = run_executable_file
         print mksep('end')
         print mksep('script')
@@ -356,7 +357,7 @@ def main():
             exit_code = run(args.workflow)
             os.chdir(tmpdir)
         else:
-            exit_code = run(path, args.params)
+            exit_code = run(path, args.params, **kwargs)
         out_paths = ('output', os.path.join(os.path.dirname(path), 'output'))
         for out_path in out_paths:
             if os.path.isfile(out_path):
