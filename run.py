@@ -31,10 +31,18 @@ ANSIBLE_VERSION = "1.7.2"
 log = logging.getLogger(__name__)
 
 
-def shellcmd(cmd, break_on_error=True):
+def shellcmd(cmd, su=False, break_on_error=True):
     """Run a command using the shell"""
     log.debug("Running command '%s'.", cmd)
-    return_code = subprocess.call(cmd, shell=True)
+    if su:
+        log.debug("Running command '%s' in su mode.", cmd)
+        p = subprocess.Popen(['sudo', 'su'], stdin=subprocess.PIPE,
+                             stderr=subprocess.PIPE, universal_newlines=True)
+        print(p.communicate(cmd))
+        return_code = p.returncode
+    else:
+        log.debug("Running command '%s'.", cmd)
+        return_code = subprocess.call(cmd, shell=True)
     if return_code:
         err = "Command '%s' exited with return code %d." % (cmd, return_code)
         if break_on_error:
@@ -185,13 +193,13 @@ def run_ansible_playbook(path, params=''):
     return shellcmd(cmd, break_on_error=False)
 
 
-def run_executable_file(path, params=''):
+def run_executable_file(path, params='', su=False):
     """Run a script"""
     os.chmod(path, 0700)
     cmd = path
     if params:
         cmd += " %s" % params
-    return shellcmd(cmd, break_on_error=False)
+    return shellcmd(cmd, su=su, break_on_error=False)
 
 
 def parse_args():
@@ -210,6 +218,8 @@ def parse_args():
                  "relative path of script file inside archive.")
         parser.add_argument('-p', '--params', type=str,
                             help="String of params to pass to script.")
+        parser.add_argument('-s', '--su', action='store_true',
+                            help="Run script in sudo mode.")
         parser.add_argument('-a', '--ansible', action='store_true',
                             help="Treat script as an ansible playbook.")
         parser.add_argument('-v', '--verbose', action='store_true',
@@ -225,6 +235,8 @@ def parse_args():
                  "relative path of script file inside archive.")
         parser.add_option('-p', '--params', type=str,
                           help="String of params to pass to script.")
+        parser.add_option('-s', '--su', action='store_true',
+                          help="Run script in sudo mode.")
         parser.add_option('-a', '--ansible', action='store_true',
                           help="Treat script as an ansible playbook.")
         parser.add_option('-v', '--verbose', action='store_true',
@@ -250,6 +262,7 @@ def main():
     randid = '%x' % random.randrange(2 ** 128)
     mksep = lambda part: '-----part-%s-%s-----' % (part, randid)
     print mksep('bootstrap')
+    kwargs = {}
 
     try:
         if os.path.isfile(args.script):
@@ -274,10 +287,12 @@ def main():
             bootstrap_ansible()
             run = run_ansible_playbook
         else:
+            if args.su:
+                kwargs['su'] = True
             run = run_executable_file
         print mksep('end')
         print mksep('script')
-        exit_code = run(path, args.params)
+        exit_code = run(path, args.params, **kwargs)
         out_paths = ('output', os.path.join(os.path.dirname(path), 'output'))
         for out_path in out_paths:
             if os.path.isfile(out_path):
