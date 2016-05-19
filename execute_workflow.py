@@ -259,16 +259,16 @@ def main():
         f.write(inputs)
         f.close()
 
-        if not os.path.isfile("/template_venv"):
-            shellcmd("virtualenv /template_venv", break_on_error=False)
-        shellcmd("/template_venv/bin/pip install cloudify", break_on_error=False)
-        shellcmd("/template_venv/bin/pip install https://github.com/mistio/mist.client/archive/cloudify_integration.zip", break_on_error=False)
-        shellcmd("git clone https://github.com/mistio/cloudify-mist-plugin /template_venv/mist_plugin", break_on_error=False)
-        os.chdir("/template_venv/mist_plugin/")
-        shellcmd("/template_venv/bin/python setup.py develop")
-        os.chdir(folder)
-        shellcmd("/template_venv/bin/pip install -r dev-requirements.txt")
-        cmd = '/template_venv/bin/cfy local init -p {0} -i inputs.json'.format(path)
+        # if not os.path.isfile("/template_venv"):
+        #     shellcmd("virtualenv /template_venv", break_on_error=False)
+        # shellcmd("/template_venv/bin/pip install cloudify", break_on_error=False)
+        # shellcmd("/template_venv/bin/pip install https://github.com/mistio/mist.client/archive/cloudify_integration.zip", break_on_error=False)
+        # shellcmd("git clone https://github.com/mistio/cloudify-mist-plugin /template_venv/mist_plugin", break_on_error=False)
+        # os.chdir("/template_venv/mist_plugin/")
+        # shellcmd("/template_venv/bin/python setup.py develop")
+        # os.chdir(folder)
+        shellcmd("pip install -r dev-requirements.txt")
+        cmd = 'cfy local init -p {0} -i inputs.json'.format(path)
         local_instances = os.path.join(folder,
                                        "local-storage/local/node-instances")
         shellcmd(cmd, break_on_error=False)
@@ -283,7 +283,7 @@ def main():
                 data.close()
         print mksep('end')
         print mksep('execute')
-        cmd = "/template_venv/bin/cfy local execute -w {0}".format(args.workflow)
+        cmd = "cfy local execute -w {0}".format(args.workflow)
         try:
             data = json.loads(args.workdata)
             print data
