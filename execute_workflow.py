@@ -250,6 +250,8 @@ def main():
             else:
                 path = find_path('/tmp/templates', template["entrypoint"])
 
+        folder = find_folder('/tmp/templates')
+        os.chdir(folder)
         f = open("inputs.json", "wb")
         f.write(json.dumps(inputs))
         f.close()
