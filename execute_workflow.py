@@ -251,7 +251,7 @@ def main():
                 path = find_path('/tmp/templates', template["entrypoint"])
 
         f = open("inputs.json", "wb")
-        f.write(inputs)
+        f.write(json.dumps(inputs))
         f.close()
         cmd = 'cfy local init --install-plugins -p {0} -i inputs.json'.format(path)
         local_instances = os.path.join(folder,
