@@ -22,15 +22,10 @@ import zipfile
 import tempfile
 import subprocess
 import json
-
+import requests
 import shutil
 
-
-# these settings affect ansible playbooks
-PYPI_URL = "https://pypi.python.org/packages/source"
-VENV_VERSION = "1.11.6"
-ANSIBLE_VERSION = "1.7.2"
-
+from mistclient import MistClient
 
 log = logging.getLogger(__name__)
 
@@ -94,28 +89,6 @@ def unpack(path, dirname='.'):
         raise Exception("File '%s' is not a valid tar or zip archive." % path)
 
 
-
-
-def bootstrap_template(blueprint, inputs):
-
-    path = find_folder('scripts')
-    os.chdir(path)
-    f = open("inputs.yaml", "wb")
-    f.write(inputs)
-    f.close()
-    if not os.path.isfile("/template_venv"):
-        shellcmd("virtualenv /template_venv", break_on_error=False)
-    shellcmd("/template_venv/bin/pip install cloudify", break_on_error=False)
-    shellcmd("/template_venv/bin/pip install -r dev-requirements.txt")
-    cmd = '/template_venv/bin/cfy local init -p {0} -i inputs.yaml'.format(blueprint)
-    return shellcmd(cmd, break_on_error=False)
-
-
-def run_template(workflow):
-    cmd = "/template_venv/bin/cfy local execute -w {0}".format(workflow)
-    return shellcmd(cmd, break_on_error=False)
-
-
 def find_folder(dirname='.'):
     """Find absolute path of script"""
     dirname = os.path.abspath(dirname)
@@ -177,21 +150,16 @@ def parse_args():
             description="Fetch and run executable script or ansible playbook.",
             formatter_class=argparse.ArgumentDefaultsHelpFormatter,
         )
-        parser.add_argument('script',
-                            help="Url or path of script location.")
-        parser.add_argument(
-            '-f', '--file', type=str,
-            help="If script is a tar or zip archive, optionally specify "
-                 "relative path of script file inside archive.")
-        parser.add_argument('-p', '--params', type=str,
-                            help="String of params to pass to script.")
-        parser.add_argument('-i', '--instance', type=str, default=[],
-                            help="Instances to pass to script.")
-        parser.add_argument('-d', '--workdata', type=str, default="",
-                            help="params for workflow.")
-
+        parser.add_argument('stack_id',
+                            help="The id of the stack")
         parser.add_argument('-w', '--workflow', type=str, default='install',
                             help="Run workflow on orchestration template.")
+        parser.add_argument('-d', '--workdata', type=str,
+                            help="String of params to pass to workflow.")
+        parser.add_argument('-u', '--uri', type=str, default='https://mist.io',
+                            help="Mist uri instance to connect to.")
+        parser.add_argument('-t', '--api-token', type=str,
+                            help="Api token to use for authentication.")
         parser.add_argument('-v', '--verbose', action='store_true',
                             help="Show debug logs.")
         args = parser.parse_args()
@@ -199,22 +167,19 @@ def parse_args():
         # Python 2.6 does not have argparse
         import optparse
         parser = optparse.OptionParser("usage: %prog [options] script")
-        parser.add_option(
-            '-f', '--file', type=str,
-            help="If script is a tar or zip archive, optionally specify "
-                 "relative path of script file inside archive.")
-        parser.add_option('-p', '--params', type=str,
-                          help="String of params to pass to script.")
-        parser.add_option('-i', '--instances', type=str,
-                          help="String of params to pass to script.")
-        parser.add_option('-d', '--workdata', type=str,
-                          help="String of params to pass to workflow.")
         parser.add_option('-w', '--workflow', type=str,
                           help="Run workflow on orchestration template.")
+        parser.add_option('-d', '--workdata', type=str,
+                          help="String of params to pass to workflow.")
+
+        parser.add_option('-u', '--uri', type=str, default='https://mist.io',
+                          help="Mist uri instance to connect to.")
         parser.add_option('-v', '--verbose', action='store_true',
                           help="Show debug logs.")
+        parser.add_option('-t', '--api-token', type=str,
+                          help="Api token to use for authentication.")
         args, list_args = parser.parse_args()
-        args.script = list_args[0]
+        args.stack_id = list_args[0]
     return args
 
 
@@ -237,83 +202,82 @@ def main():
     kwargs = {}
     print mksep('bootstrap')
     try:
-        if os.path.isfile(args.script):
-            path = args.script
-        else:
-            path = download(args.script)
-        try:
-            unpack(path, '/tmp/templates/')
-        except:
-            pass
-        else:
-            path = find_path('/tmp/templates', args.file)
 
-        inputs = ""
-        if args.params:
-            inputs = args.params
-        folder = find_folder('/tmp/templates')
-        os.chdir(folder)
-        log.debug("Directory '%s' " % os.listdir("."))
+        client = MistClient(api_token=args.api_token,
+                            mist_uri=args.uri)
+        stack = client.show_stack(args.stack_id)
+        inputs = stack["inputs"]
+        template_id = stack["template"]
+        template = client.show_template(template_id)
+        location_type = template["location_type"]
+        if location_type == "inline":
+            f = open("template.yaml")
+            f.write(template["template"])
+            f.close()
+            entrypoint = "template.yaml"
+        elif location_type == "github":
+            repo = template["template"].replace("https://github.com/", "")
+            repo = repo.split("#")
+            if len(repo) > 1:
+                branch = repo[1]
+            else:
+                branch = "master"
+            repo = repo[0]
+            if repo.endswith("/"):
+                repo = repo.rstrip("/")
+            sha_path = 'https://api.github.com/repos/%s/commits' % repo
+            headers = {}
+            resp = requests.get(sha_path, headers=headers)
+            resp = resp.json()
+            # latest_sha = resp[0]["sha"]
+            tarball_path = 'https://api.github.com/repos/%s/tarball/%s' % (repo, branch)
+            resp = requests.get(tarball_path, headers=headers,
+                                allow_redirects=False)
+            if resp.ok and resp.is_redirect and 'location' in resp.headers:
+                path = resp.headers['location']
+            else:
+                print mksep('end')
+                print mksep('summary')
+                exc = Exception("Couldn't download git project")
+                log.critical(exc)
+                print mksep('end')
+                return -1
+            path = download(path)
+            try:
+                unpack(path, '/tmp/templates/')
+            except:
+                pass
+            else:
+                path = find_path('/tmp/templates', template["entrypoint"])
 
         f = open("inputs.json", "wb")
         f.write(inputs)
         f.close()
-
-        # if not os.path.isfile("/template_venv"):
-        #     shellcmd("virtualenv /template_venv", break_on_error=False)
-        # shellcmd("/template_venv/bin/pip install cloudify", break_on_error=False)
-        # shellcmd("/template_venv/bin/pip install https://github.com/mistio/mist.client/archive/cloudify_integration.zip", break_on_error=False)
-        # shellcmd("git clone https://github.com/mistio/cloudify-mist-plugin /template_venv/mist_plugin", break_on_error=False)
-        # os.chdir("/template_venv/mist_plugin/")
-        # shellcmd("/template_venv/bin/python setup.py develop")
-        # os.chdir(folder)
-        shellcmd("pip install -r dev-requirements.txt")
-        cmd = 'cfy local init -p {0} -i inputs.json'.format(path)
+        cmd = 'cfy local init --install-plugins -p {0} -i inputs.json'.format(path)
         local_instances = os.path.join(folder,
                                        "local-storage/local/node-instances")
         shellcmd(cmd, break_on_error=False)
-        if args.instance:
-            log.debug("Instances exist" + args.instance)
+        if stack["node-instances"]:
             shutil.rmtree('local-storage/local/node-instances')
             os.mkdir("local-storage/local/node-instances")
-            instances = json.loads(args.instance)
-            for instance in instances:
+            for instance in stack["node_instances"]:
                 data = open(os.path.join(local_instances, instance["id"]),"w")
                 data.write(json.dumps(instance))
                 data.close()
         print mksep('end')
         print mksep('execute')
         cmd = "cfy local execute -w {0}".format(args.workflow)
-        try:
-            data = json.loads(args.workdata)
-            print data
-            if data.keys():
-                f = open("workflow_inputs.json", "wb")
-                f.write(args.workdata)
-                f.close()
-                cmd = cmd + " -p workflow_inputs.json"
-        except Exception:
-            pass
+        if args.workdata:
+            f = open("workflow_inputs.json", "wb")
+            f.write(args.workdata)
+            f.close()
+            cmd = cmd + " -p workflow_inputs.json"
         exit_code = shellcmd(cmd, break_on_error=False)
-        # cloudify_data = find_path("local-storage/local", "data")
-        # cloudify_data = open(cloudify_data).read()
-        # cloudify_instances = {}
         for instance in os.listdir(local_instances):
             print mksep('end')
             print mksep('cloudifyinstance')
             print open(os.path.join(local_instances, instance)).read()
 
-        # out_paths = ('output', os.path.join(os.path.dirname(path), 'output'))
-        # for out_path in out_paths:
-        #     if os.path.isfile(out_path):
-        #         print mksep('end')
-        #         print mksep('outfile')
-        #         try:
-        #             with open(out_path) as fobj:
-        #                 print fobj.read()
-        #         except Exception as exc:
-        #             log.error("Error reading '%s' file: %r", out_path, exc)
-        #         break
         print mksep('end')
         print mksep('end')
         print mksep('summary')
@@ -321,6 +285,7 @@ def main():
                  "User script exited with rc %s." % exit_code)
         print mksep('end')
         return exit_code
+
     except Exception as exc:
         print mksep('end')
         print mksep('summary')
