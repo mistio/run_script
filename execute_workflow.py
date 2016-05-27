@@ -259,7 +259,7 @@ def main():
         local_instances = os.path.join(folder,
                                        "local-storage/local/node-instances")
         shellcmd(cmd, break_on_error=False)
-        if stack["node-instances"]:
+        if stack["node_instances"]:
             shutil.rmtree('local-storage/local/node-instances')
             os.mkdir("local-storage/local/node-instances")
             for instance in stack["node_instances"]:
