@@ -158,7 +158,7 @@ def parse_args():
                             help="String of params to pass to workflow.")
         parser.add_argument('-u', '--uri', type=str, default='https://mist.io',
                             help="Mist uri instance to connect to.")
-        parser.add_argument('-t', '--api-token', type=str,
+        parser.add_argument('-t', '--apitoken', type=str,
                             help="Api token to use for authentication.")
         parser.add_argument('-v', '--verbose', action='store_true',
                             help="Show debug logs.")
@@ -176,7 +176,7 @@ def parse_args():
                           help="Mist uri instance to connect to.")
         parser.add_option('-v', '--verbose', action='store_true',
                           help="Show debug logs.")
-        parser.add_option('-t', '--api-token', type=str,
+        parser.add_option('-t', '--apitoken', type=str,
                           help="Api token to use for authentication.")
         args, list_args = parser.parse_args()
         args.stack_id = list_args[0]
@@ -201,9 +201,10 @@ def main():
     mksep = lambda part: '-----part-%s-%s-----' % (part, randid)
     kwargs = {}
     print mksep('bootstrap')
+    print args
     try:
 
-        client = MistClient(api_token=args.api_token,
+        client = MistClient(api_token=args.apitoken,
                             mist_uri=args.uri)
         stack = client.show_stack(args.stack_id)
         inputs = stack["inputs"]
