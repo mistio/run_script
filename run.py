@@ -10,7 +10,6 @@ Only system wide requirement is a python2 interpreter >= 2.4.
 """
 
 import os
-import json
 import sys
 import glob
 import copy
@@ -32,19 +31,10 @@ ANSIBLE_VERSION = "1.7.2"
 log = logging.getLogger(__name__)
 
 
-def shellcmd(cmd, env={}, su=False, break_on_error=True):
+def shellcmd(cmd, break_on_error=True):
     """Run a command using the shell"""
-    environ = os.environ.copy()
-    environ.update(env)
-    if su:
-        log.debug("Running command in su mode.")
-        p = subprocess.Popen(['sudo','-E' ,'su'], env=environ, stdin=subprocess.PIPE,
-                             stderr=subprocess.PIPE, universal_newlines=True)
-        print(p.communicate(cmd))
-        return_code = p.returncode
-    else:
-        log.debug("Running command '%s'.", cmd)
-        return_code = subprocess.call(cmd, env=environ, shell=True)
+    log.debug("Running command '%s'.", cmd)
+    return_code = subprocess.call(cmd, shell=True)
     if return_code:
         err = "Command '%s' exited with return code %d." % (cmd, return_code)
         if break_on_error:
@@ -90,23 +80,6 @@ def unpack(path, dirname='.'):
     else:
         raise Exception("File '%s' is not a valid tar or zip archive." % path)
 
-def find_folder(dirname='.'):
-    """Find absolute path of script"""
-    dirname = os.path.abspath(dirname)
-    if not os.path.isdir(dirname):
-        log.warning("Directory '%s' doesn't exist, will search in '%s'.",
-                    dirname, os.getcwd())
-        dirname = os.getcwd()
-    ldir = os.listdir(dirname)
-    if not ldir:
-        raise Exception("Directory '%s' is empty." % dirname)
-    if len(ldir) == 1:
-        path = os.path.join(dirname, ldir[0])
-        if os.path.isdir(path):
-            dirname = path
-            return path
-    else:
-        raise Exception("No folder found")
 
 def find_path(dirname='.', filename=''):
     """Find absolute path of script"""
@@ -212,32 +185,12 @@ def run_ansible_playbook(path, params=''):
     return shellcmd(cmd, break_on_error=False)
 
 
-def run_executable_file(path, params='', env={}, su=False):
+def run_executable_file(path, params=''):
     """Run a script"""
     os.chmod(path, 0700)
     cmd = path
     if params:
         cmd += " %s" % params
-    return shellcmd(cmd, env=env, su=su, break_on_error=False)
-
-
-def bootstrap_template(blueprint, inputs):
-
-    path = find_folder('scripts')
-    os.chdir(path)
-    f = open("inputs.yaml", "wb")
-    f.write(inputs)
-    f.close()
-
-    shellcmd("virtualenv env", break_on_error=False)
-    shellcmd("env/bin/pip install cloudify", break_on_error=False)
-    shellcmd("env/bin/pip install -r dev-requirements.txt")
-    cmd = 'env/bin/cfy local init -p {0} -i inputs.yaml'.format(blueprint)
-    return shellcmd(cmd, break_on_error=False)
-
-
-def run_template(workflow):
-    cmd = "env/bin/cfy local execute -w {0}".format(workflow)
     return shellcmd(cmd, break_on_error=False)
 
 
@@ -257,16 +210,8 @@ def parse_args():
                  "relative path of script file inside archive.")
         parser.add_argument('-p', '--params', type=str,
                             help="String of params to pass to script.")
-        parser.add_argument('-e', '--env', type=str,
-                            help="Env variables to pass to script.")
-        parser.add_argument('-s', '--su', action='store_true',
-                            help="Run script in sudo mode.")
         parser.add_argument('-a', '--ansible', action='store_true',
                             help="Treat script as an ansible playbook.")
-        parser.add_argument('-t', '--template', action='store_true',
-                            help="Treat script as an orchestation template.")
-        parser.add_argument('-w', '--workflow', type=str, default='install',
-                            help="Run workflow on orchestration template.")
         parser.add_argument('-v', '--verbose', action='store_true',
                             help="Show debug logs.")
         args = parser.parse_args()
@@ -280,18 +225,8 @@ def parse_args():
                  "relative path of script file inside archive.")
         parser.add_option('-p', '--params', type=str,
                           help="String of params to pass to script.")
-        parser.add_option('-e', '--env', type=str,
-                          help="Env variables to pass to script.")
-        parser.add_option('-s', '--su', action='store_true',
-                          help="Run script in sudo mode.")
-        parser.add_option('-p', '--params', type=str,
-                          help="String of params to pass to script.")
         parser.add_option('-a', '--ansible', action='store_true',
                           help="Treat script as an ansible playbook.")
-        parser.add_option('-t', '--template', action='store_true',
-                          help="Treat script as an orchestation template.")
-        parser.add_option('-w', '--workflow', type=str,
-                          help="Run workflow on orchestration template.")
         parser.add_option('-v', '--verbose', action='store_true',
                           help="Show debug logs.")
         args, list_args = parser.parse_args()
@@ -314,7 +249,6 @@ def main():
 
     randid = '%x' % random.randrange(2 ** 128)
     mksep = lambda part: '-----part-%s-%s-----' % (part, randid)
-    kwargs = {}
     print mksep('bootstrap')
 
     try:
@@ -339,25 +273,11 @@ def main():
         if args.ansible:
             bootstrap_ansible()
             run = run_ansible_playbook
-        elif args.template:
-            inputs = ""
-            if args.params:
-                inputs = args.params
-            bootstrap_template(path, inputs)
-            run = run_template
         else:
-            if args.su:
-                kwargs["su"] = True
-            if args.env:
-                kwargs["env"] = json.loads(args.env)
             run = run_executable_file
         print mksep('end')
         print mksep('script')
-        if args.template:
-            exit_code = run(args.workflow)
-            os.chdir(tmpdir)
-        else:
-            exit_code = run(path, args.params, **kwargs)
+        exit_code = run(path, args.params)
         out_paths = ('output', os.path.join(os.path.dirname(path), 'output'))
         for out_path in out_paths:
             if os.path.isfile(out_path):
