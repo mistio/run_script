@@ -24,8 +24,8 @@ import subprocess
 
 # these settings affect ansible playbooks
 PYPI_URL = "https://pypi.python.org/packages/source"
-VENV_VERSION = "1.11.6"
-ANSIBLE_VERSION = "1.7.2"
+VENV_VERSION = "15.2.0"
+ANSIBLE_VERSION = "1.9.6"
 
 
 log = logging.getLogger(__name__)
